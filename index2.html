@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Act 2: Smart Switch Wiring Simulator</title>
+    <style>
+        :root {
+            --wood-bg: #e6d3ba;
+            --panel-bg: #ffffff;
+            --text-dark: #2c2520;
+            --success: #16a34a;
+            --danger: #dc2626;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--wood-bg);
+            color: var(--text-dark);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            user-select: none;
+        }
+        .container {
+            background: var(--panel-bg);
+            border-radius: 12px;
+            padding: 24px;
+            width: 100%;
+            max-width: 900px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            box-sizing: border-box;
+        }
+        .header { text-align: center; margin-bottom: 20px; }
+        
+        /* Fixed Container Constraints to prevent element clipping */
+        .workspace {
+            position: relative;
+            width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .workspace img {
+            width: 100%;
+            height: auto;
+            display: block;
+            pointer-events: none;
+        }
+
+        /* SVG Overlay Viewport Configuration */
+        #wireCanvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+        
+        /* Enlarged target elements for high visibility and easier tapping */
+        .terminal {
+            position: absolute;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.55);
+            border: 3px solid #374151;
+            cursor: pointer;
+            z-index: 10;
+            transform: translate(-50%, -50%);
+            transition: all 0.2s ease;
+        }
+        .terminal:hover { 
+            transform: translate(-50%, -50%) scale(1.3); 
+            background: rgba(255, 255, 255, 0.95);
+            box-shadow: 0 0 12px rgba(0,0,0,0.4);
+        }
+        .terminal.active { 
+            border-color: #2563eb; 
+            background: #3b82f6; 
+            box-shadow: 0 0 14px #3b82f6;
+        }
+
+        /* Control Panel Styles */
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #e5e7eb;
+        }
+        .breaker-switch {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 90px; height: 44px;
+            background: #4b5563;
+            border-radius: 22px;
+            position: relative;
+            cursor: pointer;
+            outline: none;
+            transition: background 0.3s;
+            border: 2px solid #374151;
+        }
+        .breaker-switch::after {
+            content: 'OFF';
+            position: absolute;
+            top: 4px; left: 4px;
+            width: 32px; height: 32px;
+            background: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center; justify-content: center;
+            font-size: 11px; font-weight: bold;
+            color: #4b5563;
+            transition: transform 0.3s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .breaker-switch:checked { background: var(--success); border-color: #15803d; }
+        .breaker-switch:checked::after {
+            transform: translateX(46px);
+            content: 'ON';
+            color: var(--success);
+        }
+
+        .feedback-box {
+            width: 100%;
+            max-width: 600px;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            display: none;
+            font-weight: 500;
+            box-sizing: border-box;
+            margin-top: 10px;
+            line-height: 1.5;
+        }
+        .btn-proceed {
+            display: none;
+            background: var(--success);
+            color: white;
+            border: none;
+            padding: 14px 28px;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .btn-proceed:hover { background: #166534; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h2>Act 2: The Hardware Installation</h2>
+        <p>Connect the copper leads from the Smart Switch (left) to the correct house wires inside the Open Box (right). Flip the breaker to test your connections.</p>
+    </div>
+
+    <div class="workspace" id="workspace">
+        <img src="wiring-bg.png" alt="Smart Switch Wiring Setup">
+        <svg id="wireCanvas"></svg>
+
+        <div class="terminal" data-id="sw-neutral" data-side="left" style="top: 35.5%; left: 45.2%;" title="Switch Neutral (White)"></div>
+        <div class="terminal" data-id="sw-line" data-side="left" style="top: 45.8%; left: 45.2%;" title="Switch Line (Black)"></div>
+        <div class="terminal" data-id="sw-load" data-side="left" style="top: 55.6%; left: 45.2%;" title="Switch Load (Black)"></div>
+        <div class="terminal" data-id="sw-ground" data-side="left" style="top: 65.5%; left: 45.2%;" title="Switch Ground (Green)"></div>
+
+        <div class="terminal" data-id="wall-line" data-side="right" style="top: 38.0%; left: 59.2%;" title="House Line (Black)"></div>
+        <div class="terminal" data-id="wall-ground" data-side="right" style="top: 47.4%; left: 59.2%;" title="House Ground (Green)"></div>
+        <div class="terminal" data-id="wall-load" data-side="right" style="top: 56.6%; left: 59.2%;" title="House Load (Red)"></div>
+        <div class="terminal" data-id="wall-neutral" data-side="right" style="top: 65.8%; left: 59.2%;" title="House Neutral (White)"></div>
+    </div>
+
+    <div class="controls">
+        <div><strong>Main Breaker Switch</strong></div>
+        <input type="checkbox" class="breaker-switch" id="breaker">
+        
+        <div id="feedback" class="feedback-box"></div>
+        <button id="proceedBtn" class="btn-proceed" onclick="alert('Moving to Act 3: Software Configuration!')">Proceed to Act 3</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('wireCanvas');
+    const terminals = document.querySelectorAll('.terminal');
+    const breaker = document.getElementById('breaker');
+    const feedback = document.getElementById('feedback');
+    const proceedBtn = document.getElementById('proceedBtn');
+
+    let activeTerminal = null;
+    let connections = {}; 
+    let drawnLines = {}; 
+
+    function getCenter(el) {
+        const workspaceRect = document.getElementById('workspace').getBoundingClientRect();
+        const rect = el.getBoundingClientRect();
+        return {
+            x: rect.left - workspaceRect.left + rect.width / 2,
+            y: rect.top - workspaceRect.top + rect.height / 2
+        };
+    }
+
+    function drawLine(startEl, endEl, id) {
+        const p1 = getCenter(startEl);
+        const p2 = getCenter(endEl);
+        
+        if(drawnLines[id]) canvas.removeChild(drawnLines[id]);
+
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        const d = `M ${p1.x} ${p1.y} C ${p1.x + 60} ${p1.y}, ${p2.x - 60} ${p2.y}, ${p2.x} ${p2.y}`;
+        
+        path.setAttribute('d', d);
+        path.setAttribute('stroke', '#1e293b'); 
+        path.setAttribute('stroke-width', '5');
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke-linecap', 'round');
+        
+        canvas.appendChild(path);
+        drawnLines[id] = path;
+    }
+
+    window.addEventListener('resize', () => {
+        Object.keys(connections).forEach(sourceId => {
+            const targetId = connections[sourceId];
+            const sourceEl = document.querySelector(`[data-id="${sourceId}"]`);
+            const targetEl = document.querySelector(`[data-id="${targetId}"]`);
+            if(sourceEl && targetEl) drawLine(sourceEl, targetEl, sourceId);
+        });
+    });
+
+    terminals.forEach(term => {
+        term.addEventListener('click', (e) => {
+            if (breaker.checked) {
+                alert("Turn off the main breaker before touching wire connections!");
+                return;
+            }
+
+            const clickedSide = term.getAttribute('data-side');
+
+            if (!activeTerminal) {
+                activeTerminal = term;
+                term.classList.add('active');
+            } else {
+                if (activeTerminal === term) {
+                    activeTerminal.classList.remove('active');
+                    activeTerminal = null;
+                    return;
+                }
+                
+                if (activeTerminal.getAttribute('data-side') === clickedSide) {
+                    activeTerminal.classList.remove('active');
+                    activeTerminal = term;
+                    term.classList.add('active');
+                    return;
+                }
+
+                const source = activeTerminal.getAttribute('data-side') === 'left' ? activeTerminal : term;
+                const target = activeTerminal.getAttribute('data-side') === 'right' ? activeTerminal : term;
+                
+                const sourceId = source.getAttribute('data-id');
+                const targetId = target.getAttribute('data-id');
+
+                connections[sourceId] = targetId;
+                drawLine(source, target, sourceId);
+
+                activeTerminal.classList.remove('active');
+                activeTerminal = null;
+            }
+        });
+    });
+
+    breaker.addEventListener('change', (e) => {
+        feedback.style.display = 'block';
+        proceedBtn.style.display = 'none';
+
+        if (!e.target.checked) {
+            feedback.style.background = '#f4f4f5';
+            feedback.style.color = '#111';
+            feedback.style.border = '1px solid #d4d4d8';
+            feedback.innerHTML = "Power is OFF. Safe to modify wiring.";
+            return;
+        }
+
+        const line = connections['sw-line'];
+        const load = connections['sw-load'];
+        const neutral = connections['sw-neutral'];
+        const ground = connections['sw-ground'];
+
+        if (!line || !load || !neutral || !ground) {
+            showFeedback("Incomplete Circuit: Please hook up all 4 connections before testing the system.", false);
+            breaker.checked = false;
+            return;
+        }
+
+        // Target Evaluation Logic
+        if (line === 'wall-line' && load === 'wall-load' && neutral === 'wall-neutral' && ground === 'wall-ground') {
+            showFeedback("✅ SUCCESS! The circuit logic is complete. The system powers up successfully and is online.", true);
+            proceedBtn.style.display = 'inline-block';
+        } 
+        else if (line === 'wall-load' && load === 'wall-line' && neutral === 'wall-neutral' && ground === 'wall-ground') {
+            showFeedback("🔄 DIAGNOSTIC ERROR: Swapped Line & Load. The porch light remains stuck on permanently, but the smart switch module has no power. Turn off breaker to fix.", false);
+        }
+        else if (neutral !== 'wall-neutral') {
+            showFeedback("🛑 SYSTEM ERROR: Invalid Neutral loop. The internal digital micro-controller lacks a complete return leg. System offline.", false);
+        }
+        else if (line === 'wall-ground' || line === 'wall-neutral' || load === 'wall-ground' || load === 'wall-neutral') {
+            showFeedback("💥 SHORT CIRCUIT TRIGGERED! Live phase wire detected leaking directly into neutral or ground. Main fuse tripped.", false);
+            breaker.checked = false; 
+        }
+        else {
+            showFeedback("⚠️ CONFIGURATION ERROR: Invalid mapping parameters. System boot trace initialization failed.", false);
+        }
+    });
+
+    function showFeedback(msg, isSuccess) {
+        feedback.innerHTML = msg;
+        feedback.style.background = isSuccess ? '#dcfce7' : '#fee2e2';
+        feedback.style.color = isSuccess ? '#166534' : '#991b1b';
+        feedback.style.border = `1px solid ${isSuccess ? '#4ade80' : '#f87171'}`;
+    }
+</script>
+
+</body>
+</html>
